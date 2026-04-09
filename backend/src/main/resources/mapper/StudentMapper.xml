@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.university.sms.student.mapper.StudentMapper">
+    
+    <!-- 分页查询学生列表 -->
+    <select id="selectStudentPage" resultType="com.university.sms.student.entity.Student">
+        SELECT * FROM stu_student
+        WHERE deleted = 0
+        <if test="query.studentNo != null and query.studentNo != ''">
+            AND student_no LIKE CONCAT('%', #{query.studentNo}, '%')
+        </if>
+        <if test="query.name != null and query.name != ''">
+            AND name LIKE CONCAT('%', #{query.name}, '%')
+        </if>
+        <if test="query.department != null and query.department != ''">
+            AND department = #{query.department}
+        </if>
+        <if test="query.major != null and query.major != ''">
+            AND major = #{query.major}
+        </if>
+        <if test="query.classNo != null and query.classNo != ''">
+            AND class_no = #{query.classNo}
+        </if>
+        <if test="query.academicStatus != null and query.academicStatus != ''">
+            AND academic_status = #{query.academicStatus}
+        </if>
+        <if test="query.counselorId != null">
+            AND counselor_id = #{query.counselorId}
+        </if>
+        <if test="query.enrollmentYear != null">
+            AND YEAR(enrollment_date) = #{query.enrollmentYear}
+        </if>
+        ORDER BY created_at DESC
+    </select>
+    
+</mapper>

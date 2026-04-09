@@ -1,0 +1,102 @@
+
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: sms-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: sms_db
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      # 只有在 sms_db.sys_user 表存在时才认为 MySQL 完全就绪
+      test: ["CMD-SHELL", "mysql -uroot -proot123 -e 'USE sms_db; SHOW TABLES LIKE \"sys_user\";' | grep sys_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sms-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: sms-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sms-network
+
+  # Spring Boot 后端
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sms-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/sms_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root123
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: sms_db
+      DB_USER: root
+      DB_PASSWORD: root123
+      TZ: Asia/Shanghai
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_backups:/app/backups
+    networks:
+      - sms-network
+
+  # Vue 前端 (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sms-frontend
+    restart: always
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+    networks:
+      - sms-network
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_uploads:
+  backend_backups:
+
+networks:
+  sms-network:
+    driver: bridge

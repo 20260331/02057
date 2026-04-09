@@ -1,0 +1,226 @@
+@use './variables' as *;
+
+// Element Plus 主题变量覆盖
+:root {
+  --el-color-primary: #1890ff;
+  --el-color-primary-light-3: #40a9ff;
+  --el-color-primary-light-5: #69c0ff;
+  --el-color-primary-light-7: #91d5ff;
+  --el-color-primary-light-8: #bae7ff;
+  --el-color-primary-light-9: #e6f7ff;
+  --el-color-primary-dark-2: #0050b3;
+  --el-menu-bg-color: #001529;
+  --el-menu-text-color: rgba(255, 255, 255, 0.65);
+  --el-menu-active-color: #fff;
+  --el-menu-hover-bg-color: #000c17;
+}
+
+// 重置样式 - 只设置 box-sizing，不重置 margin/padding 以避免影响 Element Plus
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+// 只对 html 和 body 重置 margin/padding
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: $color-text-primary;
+  background-color: $background-color-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $color-primary;
+  text-decoration: none;
+  
+  &:hover {
+    color: $color-primary-light-1;
+  }
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: $background-color-base;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $border-color-base;
+  border-radius: 3px;
+  
+  &:hover {
+    background: $color-text-secondary;
+  }
+}
+
+// 通用工具类
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+// 间距工具类
+@for $i from 1 through 10 {
+  .mt-#{$i * 4} {
+    margin-top: #{$i * 4}px;
+  }
+  .mb-#{$i * 4} {
+    margin-bottom: #{$i * 4}px;
+  }
+  .ml-#{$i * 4} {
+    margin-left: #{$i * 4}px;
+  }
+  .mr-#{$i * 4} {
+    margin-right: #{$i * 4}px;
+  }
+  .pt-#{$i * 4} {
+    padding-top: #{$i * 4}px;
+  }
+  .pb-#{$i * 4} {
+    padding-bottom: #{$i * 4}px;
+  }
+  .pl-#{$i * 4} {
+    padding-left: #{$i * 4}px;
+  }
+  .pr-#{$i * 4} {
+    padding-right: #{$i * 4}px;
+  }
+}
+
+// 页面容器
+.page-container {
+  padding: 20px;
+  background-color: $background-color-white;
+  border-radius: $border-radius-base;
+}
+
+// 页面标题
+.page-title {
+  margin-bottom: 20px;
+  font-size: 18px;
+  font-weight: 500;
+  color: $color-text-primary;
+}
+
+// 搜索表单
+.search-form {
+  margin-bottom: 16px;
+  padding: 16px;
+  background-color: $background-color-light;
+  border-radius: $border-radius-base;
+}
+
+// 表格操作栏
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+// 状态标签颜色
+.status-tag {
+  &--success {
+    color: $color-success;
+  }
+  &--warning {
+    color: $color-warning;
+  }
+  &--danger {
+    color: $color-danger;
+  }
+  &--info {
+    color: $color-info;
+  }
+}
+
+// 卡片样式
+.card {
+  padding: 20px;
+  background-color: $background-color-white;
+  border-radius: $border-radius-base;
+  box-shadow: $box-shadow-light;
+}
+
+// 表单项标签
+.form-label {
+  font-weight: 500;
+  color: $color-text-primary;
+}
+
+// 必填标记
+.required::before {
+  content: '*';
+  margin-right: 4px;
+  color: $color-danger;
+}
+
+// 响应式隐藏
+@media (max-width: 768px) {
+  .hidden-sm {
+    display: none !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .hidden-md {
+    display: none !important;
+  }
+}

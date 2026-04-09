@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.university.sms.grade.mapper.GradeMapper">
+    
+    <!-- 查询学生指定学期的成绩 -->
+    <select id="selectByStudentAndSemester" resultType="com.university.sms.grade.entity.Grade">
+        SELECT g.* FROM grd_grade g
+        INNER JOIN crs_course c ON g.course_id = c.id
+        WHERE g.student_id = #{studentId}
+        AND g.status = 'APPROVED'
+        <if test="semester != null and semester != ''">
+            AND c.semester = #{semester}
+        </if>
+        ORDER BY g.created_at DESC
+    </select>
+    
+</mapper>

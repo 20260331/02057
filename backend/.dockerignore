@@ -1,0 +1,15 @@
+# Build outputs
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+.DS_Store

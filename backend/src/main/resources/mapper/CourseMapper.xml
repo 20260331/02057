@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.university.sms.course.mapper.CourseMapper">
+    
+    <!-- 分页查询课程列表 -->
+    <select id="selectCoursePage" resultType="com.university.sms.course.entity.Course">
+        SELECT * FROM crs_course
+        WHERE deleted = 0 AND status = 1
+        <if test="query.keyword != null and query.keyword != ''">
+            AND (name LIKE CONCAT('%', #{query.keyword}, '%') 
+                 OR course_code LIKE CONCAT('%', #{query.keyword}, '%')
+                 OR teacher_name LIKE CONCAT('%', #{query.keyword}, '%'))
+        </if>
+        <if test="query.semester != null and query.semester != ''">
+            AND semester = #{query.semester}
+        </if>
+        <if test="query.category != null and query.category != ''">
+            AND category = #{query.category}
+        </if>
+        <if test="query.department != null and query.department != ''">
+            AND department = #{query.department}
+        </if>
+        <if test="query.teacherId != null">
+            AND teacher_id = #{query.teacherId}
+        </if>
+        ORDER BY course_code
+    </select>
+    
+    <!-- 搜索课程 -->
+    <select id="searchCourses" resultType="com.university.sms.course.entity.Course">
+        SELECT * FROM crs_course
+        WHERE deleted = 0 AND status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') 
+                 OR course_code LIKE CONCAT('%', #{keyword}, '%')
+                 OR teacher_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="semester != null and semester != ''">
+            AND semester = #{semester}
+        </if>
+        ORDER BY enrolled_count DESC
+        LIMIT 20
+    </select>
+    
+    <!-- 获取热门课程 -->
+    <select id="selectPopularCourses" resultType="com.university.sms.course.entity.Course">
+        SELECT * FROM crs_course
+        WHERE deleted = 0 AND status = 1
+        <if test="semester != null and semester != ''">
+            AND semester = #{semester}
+        </if>
+        ORDER BY enrolled_count DESC
+        LIMIT #{limit}
+    </select>
+    
+</mapper>
