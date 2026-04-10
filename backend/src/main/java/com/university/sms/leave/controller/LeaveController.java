@@ -45,8 +45,21 @@ public class LeaveController {
      * 获取请假详情
      */
     @GetMapping("/{id}")
-    public Result<LeaveInfoDTO> getLeaveById(@PathVariable Long id) {
+    public Result<LeaveInfoDTO> getLeaveById(@PathVariable Long id, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) request.getAttribute("roles");
+        
         LeaveInfoDTO leave = leaveService.getLeaveById(id);
+        
+        // 权限校验：学生只能看自己的，管理员/审批人可以看所有
+        StudentDTO student = studentService.getByUserIdOrNull(userId);
+        boolean isAdminOrApprover = roles != null && (roles.contains("ADMIN") || roles.contains("ACADEMIC_AFFAIRS") || roles.contains("COUNSELOR") || roles.contains("DEPARTMENT_HEAD"));
+        
+        if (!isAdminOrApprover && (student == null || !student.getId().equals(leave.getStudentId()))) {
+            return Result.error(403, "无权查看他人的请假记录");
+        }
+        
         return Result.success(leave);
     }
     
@@ -156,7 +169,21 @@ public class LeaveController {
      * 销假
      */
     @PutMapping("/{id}/return")
-    public Result<Void> registerReturn(@PathVariable Long id, @RequestBody ReturnDTO dto) {
+    public Result<Void> registerReturn(@PathVariable Long id, @RequestBody ReturnDTO dto, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) request.getAttribute("roles");
+        
+        LeaveInfoDTO leave = leaveService.getLeaveById(id);
+        
+        // 权限校验：学生只能销自己的假，管理员/审批人可以销所有人的假
+        StudentDTO student = studentService.getByUserIdOrNull(userId);
+        boolean isAdminOrApprover = roles != null && (roles.contains("ADMIN") || roles.contains("ACADEMIC_AFFAIRS") || roles.contains("COUNSELOR") || roles.contains("DEPARTMENT_HEAD"));
+        
+        if (!isAdminOrApprover && (student == null || !student.getId().equals(leave.getStudentId()))) {
+            return Result.error(403, "无权对他人的请假记录进行销假操作");
+        }
+        
         leaveService.registerReturn(id, dto.getReturnDate());
         return Result.success();
     }
