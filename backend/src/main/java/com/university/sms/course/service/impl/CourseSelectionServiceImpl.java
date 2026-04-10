@@ -271,22 +271,29 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
             Long studentId, Long courseId, Course course, CourseSelection existing) {
 
         CourseSelectionResultDTO result = new CourseSelectionResultDTO();
-        boolean hasCapacity = courseService.hasAvailableCapacity(courseId);
 
-        if (hasCapacity) {
-            boolean enrolled = courseService.incrementEnrolledCount(courseId);
-            if (!enrolled) {
+        // 先尝试原子性增加已选人数
+        // 数据库中的 incrementEnrolledCount 使用条件更新防止超额
+        boolean enrolled = courseService.incrementEnrolledCount(courseId);
+
+        if (enrolled) {
+            try {
+                saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.SELECTED);
+                result.setSuccess(true);
+                result.setMessage("选课成功（预选阶段）");
+                result.setStatus(SelectionStatus.SELECTED.getCode());
+            } catch (Exception e) {
+                // 如果保存选课记录失败，需要回滚已选人数
+                courseService.decrementEnrolledCount(courseId);
+                // 进入待抽签状态作为降级处理
                 saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.LOTTERY_PENDING);
                 result.setSuccess(true);
                 result.setMessage("课程报名人数较多，已进入待抽签状态");
                 result.setStatus(SelectionStatus.LOTTERY_PENDING.getCode());
-                return result;
+                log.error("预选阶段保存选课记录失败，降级为待抽签状态，studentId={}, courseId={}", studentId, courseId, e);
             }
-            saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.SELECTED);
-            result.setSuccess(true);
-            result.setMessage("选课成功（预选阶段）");
-            result.setStatus(SelectionStatus.SELECTED.getCode());
         } else {
+            // 已满员，进入待抽签状态
             saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.LOTTERY_PENDING);
             result.setSuccess(true);
             result.setMessage("课程报名人数超出容量，已进入待抽签状态，请等待预选结束后的抽签结果");
@@ -303,23 +310,27 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
 
         CourseSelectionResultDTO result = new CourseSelectionResultDTO();
 
-        if (!courseService.hasAvailableCapacity(courseId)) {
+        // 先尝试原子性增加已选人数，成功后再保存选课记录
+        // 这样可以防止并发下的超额选课问题
+        boolean enrolled = courseService.incrementEnrolledCount(courseId);
+        if (!enrolled) {
             result.setSuccess(false);
             result.setMessage("课程已满");
             return result;
         }
-        
-        boolean enrolled = courseService.incrementEnrolledCount(courseId);
-        if (!enrolled) {
+
+        try {
+            saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.SELECTED);
+            result.setSuccess(true);
+            result.setMessage("选课成功");
+            result.setStatus(SelectionStatus.SELECTED.getCode());
+        } catch (Exception e) {
+            // 如果保存选课记录失败，需要回滚已选人数
+            courseService.decrementEnrolledCount(courseId);
             result.setSuccess(false);
-            result.setMessage("选课失败，课程可能已满");
-            return result;
+            result.setMessage("选课失败，请重试");
+            log.error("保存选课记录失败，studentId={}, courseId={}", studentId, courseId, e);
         }
-        
-        saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.SELECTED);
-        result.setSuccess(true);
-        result.setMessage("选课成功");
-        result.setStatus(SelectionStatus.SELECTED.getCode());
         return result;
     }
 
@@ -404,12 +415,15 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
         if (prerequisites.isEmpty()) {
             return Collections.emptyList();
         }
-        
+
         List<String> missing = new ArrayList<>();
         for (CoursePrerequisite prereq : prerequisites) {
-            // 检查学生是否通过先修课程
+            // 检查学生是否通过先修课程（仅认可已审批成绩）
             Grade grade = gradeMapper.selectByStudentAndCourse(studentId, prereq.getPrerequisiteCourseId());
-            if (grade == null || grade.getScore() == null || 
+            // 成绩必须存在、已审批、有分数且分数达到最低要求
+            if (grade == null ||
+                !Grade.STATUS_APPROVED.equals(grade.getStatus()) ||
+                grade.getScore() == null ||
                 grade.getScore().doubleValue() < prereq.getMinScore().doubleValue()) {
                 Course prereqCourse = courseMapper.selectById(prereq.getPrerequisiteCourseId());
                 if (prereqCourse != null) {
@@ -417,7 +431,7 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
                 }
             }
         }
-        
+
         return missing;
     }
 
@@ -503,37 +517,60 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
     
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void executeLottery(Long courseId) {
+    public synchronized void executeLottery(Long courseId) {
         Course course = courseMapper.selectById(courseId);
         if (course == null) {
             throw new BusinessException("课程不存在");
         }
-        
+
+        // 重新查询课程获取最新已选人数（防止并发问题）
+        int currentEnrolled = course.getEnrolledCount();
+        int capacity = course.getCapacity();
+        int available = capacity - currentEnrolled;
+
+        if (available <= 0) {
+            log.info("课程 {} 已满员，所有待抽签记录将标记为未中签", course.getName());
+            // 所有待抽签记录标记为未中签
+            List<CourseSelection> pending = selectionMapper.selectByCourseIdAndStatus(
+                    courseId, SelectionStatus.LOTTERY_PENDING.getCode());
+            for (CourseSelection selection : pending) {
+                selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
+                selectionMapper.updateById(selection);
+            }
+            return;
+        }
+
         List<CourseSelection> pending = selectionMapper.selectByCourseIdAndStatus(
                 courseId, SelectionStatus.LOTTERY_PENDING.getCode());
-        
+
         if (pending.isEmpty()) {
             log.info("课程 {} 没有待抽签记录", course.getName());
             return;
         }
-        
-        int available = course.getAvailableCapacity();
-        
+
         Collections.shuffle(pending);
-        
+
         int selected = 0;
+        int enrolled = currentEnrolled;
         for (int i = 0; i < pending.size(); i++) {
             CourseSelection selection = pending.get(i);
-            if (i < available) {
+            if (i < available && enrolled < capacity) {
                 selection.setStatus(SelectionStatus.SELECTED.getCode());
-                courseService.incrementEnrolledCount(courseId);
-                selected++;
+                // 使用数据库原子操作增加已选人数
+                boolean incremented = courseService.incrementEnrolledCount(courseId);
+                if (incremented) {
+                    selected++;
+                    enrolled++;
+                } else {
+                    // 增加失败，说明已满，标记为未中签
+                    selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
+                }
             } else {
                 selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
             }
             selectionMapper.updateById(selection);
         }
-        
+
         log.info("课程 {} ({}) 抽签完成：{} 人参与，{} 人中签，{} 人未中签",
                 course.getName(), course.getCourseCode(),
                 pending.size(), selected, pending.size() - selected);
