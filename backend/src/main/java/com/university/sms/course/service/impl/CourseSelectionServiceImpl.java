@@ -19,6 +19,7 @@ import com.university.sms.system.service.SystemConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -185,7 +186,7 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
     // ==================== 选课核心逻辑 ====================
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.REPEATABLE_READ)
     public CourseSelectionResultDTO selectCourse(Long studentId, Long courseId) {
         CourseSelectionResultDTO result = new CourseSelectionResultDTO();
 
@@ -271,17 +272,9 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
             Long studentId, Long courseId, Course course, CourseSelection existing) {
 
         CourseSelectionResultDTO result = new CourseSelectionResultDTO();
-        boolean hasCapacity = courseService.hasAvailableCapacity(courseId);
-
-        if (hasCapacity) {
-            boolean enrolled = courseService.incrementEnrolledCount(courseId);
-            if (!enrolled) {
-                saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.LOTTERY_PENDING);
-                result.setSuccess(true);
-                result.setMessage("课程报名人数较多，已进入待抽签状态");
-                result.setStatus(SelectionStatus.LOTTERY_PENDING.getCode());
-                return result;
-            }
+        
+        boolean enrolled = courseService.incrementEnrolledCount(courseId);
+        if (enrolled) {
             saveOrUpdateSelection(studentId, courseId, existing, SelectionStatus.SELECTED);
             result.setSuccess(true);
             result.setMessage("选课成功（预选阶段）");
@@ -302,17 +295,11 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
             Long studentId, Long courseId, Course course, CourseSelection existing) {
 
         CourseSelectionResultDTO result = new CourseSelectionResultDTO();
-
-        if (!courseService.hasAvailableCapacity(courseId)) {
-            result.setSuccess(false);
-            result.setMessage("课程已满");
-            return result;
-        }
         
         boolean enrolled = courseService.incrementEnrolledCount(courseId);
         if (!enrolled) {
             result.setSuccess(false);
-            result.setMessage("选课失败，课程可能已满");
+            result.setMessage("课程已满");
             return result;
         }
         
@@ -341,7 +328,7 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
     }
     
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.REPEATABLE_READ)
     public void withdrawCourse(Long studentId, Long courseId) {
         String phase = resolveCurrentPhase();
         if (SelectionPhaseDTO.PHASE_NOT_STARTED.equals(phase) || SelectionPhaseDTO.PHASE_CLOSED.equals(phase)) {
@@ -399,7 +386,6 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
     
     @Override
     public List<String> checkPrerequisites(Long studentId, Long courseId) {
-        // 获取先修课程要求
         List<CoursePrerequisite> prerequisites = prerequisiteMapper.selectByCourseId(courseId);
         if (prerequisites.isEmpty()) {
             return Collections.emptyList();
@@ -407,9 +393,9 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
         
         List<String> missing = new ArrayList<>();
         for (CoursePrerequisite prereq : prerequisites) {
-            // 检查学生是否通过先修课程
             Grade grade = gradeMapper.selectByStudentAndCourse(studentId, prereq.getPrerequisiteCourseId());
             if (grade == null || grade.getScore() == null || 
+                !Grade.STATUS_APPROVED.equals(grade.getStatus()) ||
                 grade.getScore().doubleValue() < prereq.getMinScore().doubleValue()) {
                 Course prereqCourse = courseMapper.selectById(prereq.getPrerequisiteCourseId());
                 if (prereqCourse != null) {
@@ -502,7 +488,7 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
     }
     
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public void executeLottery(Long courseId) {
         Course course = courseMapper.selectById(courseId);
         if (course == null) {
@@ -517,7 +503,18 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
             return;
         }
         
-        int available = course.getAvailableCapacity();
+        int currentEnrolledCount = course.getEnrolledCount() != null ? course.getEnrolledCount() : 0;
+        int capacity = course.getCapacity() != null ? course.getCapacity() : 0;
+        int available = capacity - currentEnrolledCount;
+        
+        if (available <= 0) {
+            log.info("课程 {} 容量已满，无剩余名额", course.getName());
+            for (CourseSelection selection : pending) {
+                selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
+                selectionMapper.updateById(selection);
+            }
+            return;
+        }
         
         Collections.shuffle(pending);
         
@@ -525,9 +522,13 @@ public class CourseSelectionServiceImpl implements CourseSelectionService {
         for (int i = 0; i < pending.size(); i++) {
             CourseSelection selection = pending.get(i);
             if (i < available) {
-                selection.setStatus(SelectionStatus.SELECTED.getCode());
-                courseService.incrementEnrolledCount(courseId);
-                selected++;
+                boolean enrolled = courseService.incrementEnrolledCount(courseId);
+                if (enrolled) {
+                    selection.setStatus(SelectionStatus.SELECTED.getCode());
+                    selected++;
+                } else {
+                    selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
+                }
             } else {
                 selection.setStatus(SelectionStatus.LOTTERY_FAILED.getCode());
             }

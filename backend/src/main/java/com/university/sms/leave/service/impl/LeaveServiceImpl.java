@@ -67,9 +67,17 @@ public class LeaveServiceImpl implements LeaveService {
     
     @Override
     public LeaveInfoDTO getLeaveById(Long id) {
+        return getLeaveById(id, null);
+    }
+
+    @Override
+    public LeaveInfoDTO getLeaveById(Long id, Long studentId) {
         LeaveRequest leave = leaveRequestMapper.selectById(id);
         if (leave == null) {
             throw new BusinessException("请假记录不存在");
+        }
+        if (studentId != null && !studentId.equals(leave.getStudentId())) {
+            throw new BusinessException("无权访问该请假记录");
         }
         return toDTO(leave);
     }
@@ -172,9 +180,19 @@ public class LeaveServiceImpl implements LeaveService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void registerReturn(Long leaveId, LocalDate returnDate) {
+        registerReturn(leaveId, returnDate, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void registerReturn(Long leaveId, LocalDate returnDate, Long studentId) {
         LeaveRequest leave = leaveRequestMapper.selectById(leaveId);
         if (leave == null) {
             throw new BusinessException("请假记录不存在");
+        }
+        
+        if (studentId != null && !studentId.equals(leave.getStudentId())) {
+            throw new BusinessException("无权执行销假操作");
         }
         
         if (!LeaveRequest.STATUS_APPROVED.equals(leave.getStatus())) {

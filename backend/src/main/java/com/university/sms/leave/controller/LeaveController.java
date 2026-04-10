@@ -45,7 +45,27 @@ public class LeaveController {
      * 获取请假详情
      */
     @GetMapping("/{id}")
-    public Result<LeaveInfoDTO> getLeaveById(@PathVariable Long id) {
+    public Result<LeaveInfoDTO> getLeaveById(@PathVariable Long id, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) request.getAttribute("roles");
+        
+        boolean isPrivileged = roles != null && (
+            roles.contains("ADMIN") || 
+            roles.contains("ACADEMIC_AFFAIRS") || 
+            roles.contains("COUNSELOR") || 
+            roles.contains("DEPARTMENT_HEAD")
+        );
+        
+        if (!isPrivileged) {
+            StudentDTO student = studentService.getByUserIdOrNull(userId);
+            if (student == null) {
+                return Result.error(403, "无权访问该请假记录");
+            }
+            LeaveInfoDTO leave = leaveService.getLeaveById(id, student.getId());
+            return Result.success(leave);
+        }
+        
         LeaveInfoDTO leave = leaveService.getLeaveById(id);
         return Result.success(leave);
     }
@@ -156,8 +176,29 @@ public class LeaveController {
      * 销假
      */
     @PutMapping("/{id}/return")
-    public Result<Void> registerReturn(@PathVariable Long id, @RequestBody ReturnDTO dto) {
-        leaveService.registerReturn(id, dto.getReturnDate());
+    public Result<Void> registerReturn(@PathVariable Long id, 
+                                       @RequestBody ReturnDTO dto,
+                                       HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) request.getAttribute("roles");
+        
+        boolean isPrivileged = roles != null && (
+            roles.contains("ADMIN") || 
+            roles.contains("ACADEMIC_AFFAIRS") || 
+            roles.contains("COUNSELOR") || 
+            roles.contains("DEPARTMENT_HEAD")
+        );
+        
+        if (!isPrivileged) {
+            StudentDTO student = studentService.getByUserIdOrNull(userId);
+            if (student == null) {
+                return Result.error(403, "无权执行销假操作");
+            }
+            leaveService.registerReturn(id, dto.getReturnDate(), student.getId());
+        } else {
+            leaveService.registerReturn(id, dto.getReturnDate());
+        }
         return Result.success();
     }
 
