@@ -19,6 +19,13 @@ public interface LeaveService {
      * 获取请假详情
      */
     LeaveInfoDTO getLeaveById(Long id);
+
+    /**
+     * 获取请假详情（带学生身份验证）
+     * @param id 请假ID
+     * @param studentId 学生ID（用于验证所有权）
+     */
+    LeaveInfoDTO getLeaveById(Long id, Long studentId);
     
     /**
      * 获取学生的请假记录
@@ -59,6 +66,14 @@ public interface LeaveService {
      * 销假
      */
     void registerReturn(Long leaveId, LocalDate returnDate);
+
+    /**
+     * 销假（带学生身份验证）
+     * @param leaveId 请假ID
+     * @param returnDate 销假日期
+     * @param studentId 学生ID（用于验证所有权）
+     */
+    void registerReturn(Long leaveId, LocalDate returnDate, Long studentId);
     
     /**
      * 获取未按时销假的记录
